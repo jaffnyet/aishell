@@ -1,5 +1,29 @@
 # AI Work Log
 
+## 2026-10-16 - Add README.md, set up SSH authentication, and push to GitHub
+
+### User prompt / intent
+Please create a README.md file for the Github repo. Also, I don't want everything to be pushed. Don't push files under demo_dir, docs, and test_folder.
+
+### Changes made and rationale
+- Generated a new ED25519 SSH key pair (`~/.ssh/id_ed25519`) and loaded it into ssh-agent.
+- Added GitHub's host keys to `~/.ssh/known_hosts` via `ssh-keyscan` to enable host key verification.
+- Created `README.md` (132 lines) documenting the AiShell architecture, available commands, build instructions (built-in and standalone targets), usage examples (REPL, subcommand, symlink multicall modes, `--json` output), project layout, and testing instructions.
+- Switched the git remote from HTTPS to SSH: `git remote set-url origin git@github.com:jaffnyet/aishell.git`.
+- Committed README.md locally as commit `02dab41`.
+- Pushed `main` branch to GitHub. Only README.md and previously committed files were pushed; `demo_dir/`, `docs/`, and `test_folder/` remain untracked and were excluded.
+
+### Debugging and verification
+- `ssh -T git@github.com` confirmed: "Hi jaffnyet! You've successfully authenticated"
+- `git push origin main` output: `94ac6d3..02dab41 main -> main`
+- `git remote -v` confirms SSH URL is now the active remote.
+
+### How to verify
+```sh
+git remote -v
+git log --oneline -3
+```
+
 ## 2026-10-09 - AiShell foundation, `cat`, build automation, and verification
 
 ### User prompt / intent
