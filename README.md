@@ -35,9 +35,7 @@ AiShell follows the command anatomy defined in [APPANATOMY.md](APPANATOMY.md):
 | `mkdir` | Create directories (`-p`) |
 | `rmdir` | Remove empty directories |
 | `touch` | Change file timestamps / create files |
-| `cd`    | Change the current working directory |
-| `pwd`   | Print the current working directory |
-| `echo`  | Display a line of text (`-n`) |
+| `pkg`   | Manage shell packages (install/list/info/remove) |
 
 ## Build
 
@@ -113,6 +111,7 @@ aishell/
 ├── APPANATOMY.md         # Command architecture specification
 ├── AGENTS.md             # Agent persona and workflow guidelines
 ├── ai_work_log.md        # Development work log
+├── setup_test_pkg.sh        # Generates the mock cli-tools package tarball
 ├── Makefile              # Build system (built-in + standalone targets)
 ├── sample.txt            # Sample file for testing
 ├── include/              # Shared headers

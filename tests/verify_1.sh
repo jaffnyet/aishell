@@ -8,6 +8,8 @@ cd "$ROOT_DIR"
 BUILD_COMPLETE=0
 LS_TEST_DIR=""
 COMMAND_TEST_DIR=""
+SYMLINK_DIR=""
+PKG_TEST_HOME=""
 
 cleanup()
 {
@@ -17,9 +19,9 @@ cleanup()
         tests/test_cat_error \
         tests/test_cat_error.log \
         tests/aishell_test.log \
-        tests/cmd_symlink_pwd \
-        tests/cmd_symlink_echo \
-        tests/cmd_symlink_ls
+        tests/cmd_symlink_ls \
+        cli-tools-0.1.0.tar.gz
+    rm -rf -- fixtures/cli-tools
 
     if [[ -n "$LS_TEST_DIR" ]]; then
         rm -rf -- "$LS_TEST_DIR"
@@ -294,7 +296,7 @@ echo "[Stage 7/7] Additional command verification"
 COMMAND_TEST_DIR="$(mktemp -d tests/command-fixture.XXXXXX)"
 printf 'line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12' > "$COMMAND_TEST_DIR/lines.txt"
 
-for command_name in stat head tail cp mv rm mkdir rmdir touch cd pwd echo; do
+for command_name in stat head tail cp mv rm mkdir rmdir touch pkg; do
     if ! ./aishell "$command_name" -h > tests/aishell_test.log 2>&1 ||
        ! grep -Fq "Usage: $command_name" tests/aishell_test.log; then
         cat tests/aishell_test.log >&2
@@ -525,7 +527,7 @@ else
     exit 1
 fi
 
-for command_name in stat head tail cp mv rm mkdir rmdir touch cd pwd echo; do
+for command_name in stat head tail cp mv rm mkdir rmdir touch pkg; do
     if ! ./aishell help "$command_name" > tests/aishell_test.log 2>&1 ||
        ! grep -Fq "Usage: $command_name" tests/aishell_test.log; then
         cat tests/aishell_test.log >&2
@@ -535,78 +537,138 @@ for command_name in stat head tail cp mv rm mkdir rmdir touch cd pwd echo; do
 done
 echo "[PASS] All new command modules expose command-specific help."
 
-echo "[Stage 7b] Built-in command verification (cd, pwd, echo)"
+echo "[Stage 7b] Package manager (pkg) verification"
 
-# pwd test
-if ./aishell pwd > tests/aishell_test.log 2>&1 &&
-   grep -Fx "$(pwd)" tests/aishell_test.log; then
-    echo "[PASS] pwd prints the current working directory."
-else
+# Use an isolated HOME so pkg tests never touch the real ~/.mysh.
+PKG_TEST_HOME="$(mktemp -d tests/pkg-home.XXXXXX)"
+HOME="$PKG_TEST_HOME" ./aishell pkg list > tests/aishell_test.log 2>&1
+if ! grep -Fq "No packages installed." tests/aishell_test.log; then
     cat tests/aishell_test.log >&2
-    echo "[FAIL] pwd did not print the expected directory." >&2
+    echo "[FAIL] pkg list reported empty install incorrectly." >&2
     exit 1
 fi
+echo "[PASS] pkg list reports no packages when database is empty."
 
-# echo test
-if ./aishell echo hello world > tests/aishell_test.log 2>&1 &&
-   grep -Fqx 'hello world' tests/aishell_test.log; then
-    echo "[PASS] echo prints arguments separated by spaces."
-else
+# Build a mock cli-tools tarball using the project's setup script.
+if ! ./setup_test_pkg.sh > tests/aishell_test.log 2>&1; then
     cat tests/aishell_test.log >&2
-    echo "[FAIL] echo did not print expected output." >&2
+    echo "[FAIL] setup_test_pkg.sh failed to build the mock tarball." >&2
     exit 1
 fi
+echo "[PASS] setup_test_pkg.sh produced cli-tools-0.1.0.tar.gz."
 
-# echo -n test (no trailing newline)
-if ./aishell echo -n "no newline" > tests/aishell_test.log 2>&1 &&
-   ! grep -qP 'no newline\n$' tests/aishell_test.log &&
-   grep -Fq 'no newline' tests/aishell_test.log; then
-    echo "[PASS] echo -n suppresses trailing newline."
-else
-    cat tests/aishell_test.log >&2
-    echo "[FAIL] echo -n did not suppress trailing newline." >&2
-    exit 1
-fi
-
-# echo -h test
-if ! ./aishell echo -h > tests/aishell_test.log 2>&1 ||
-   ! grep -Fq 'Usage: echo' tests/aishell_test.log; then
-    cat tests/aishell_test.log >&2
-    echo "[FAIL] echo -h did not display usage." >&2
-    exit 1
-fi
-echo "[PASS] echo -h displays usage."
-
-# cd to a known directory and verify
-if ./aishell cd "$COMMAND_TEST_DIR" > tests/aishell_test.log 2>&1; then
-    echo "[PASS] cd changes to the specified directory."
-else
-    cat tests/aishell_test.log >&2
-    echo "[FAIL] cd failed to change directory." >&2
-    exit 1
-fi
-
-# cd error on nonexistent directory
-if ! ./aishell cd /nonexistent/path > tests/aishell_test.log 2>&1; then
-    if ! grep -Fq 'No such file or directory' tests/aishell_test.log; then
+# Install the mock package and verify binaries land in ~/.mysh/bin.
+HOME="$PKG_TEST_HOME" ./aishell pkg install cli-tools-0.1.0.tar.gz \
+    > tests/aishell_test.log 2>&1
+for bin in cat head stat; do
+    if [ ! -x "$PKG_TEST_HOME/.mysh/bin/$bin" ]; then
         cat tests/aishell_test.log >&2
-        echo "[FAIL] cd did not report the expected error for a bad path." >&2
+        echo "[FAIL] pkg install did not place an executable $bin in .mysh/bin." >&2
         exit 1
     fi
-    echo "[PASS] cd reports error for nonexistent directory."
-else
+done
+if ! grep -Fq "pkg: cli-tools-0.1.0 installed successfully." tests/aishell_test.log; then
     cat tests/aishell_test.log >&2
-    echo "[FAIL] cd unexpectedly succeeded for a nonexistent directory." >&2
+    echo "[FAIL] pkg install did not report success." >&2
     exit 1
 fi
+echo "[PASS] pkg install extracts the package and exposes all three executables."
+
+# Run all installed binaries to confirm they are executable and functional.
+# Capture output to a file first to avoid SIGPIPE from grep closing the pipe.
+for bin in cat head stat; do
+    "$PKG_TEST_HOME/.mysh/bin/$bin" Makefile > tests/aishell_test.log 2>&1
+    if [ $? -ne 0 ]; then
+        cat tests/aishell_test.log >&2
+        echo "[FAIL] Installed $bin binary did not execute successfully." >&2
+        exit 1
+    fi
+done
+echo "[PASS] All installed package binaries execute correctly."
+
+# pkg list should now report the installed package.
+HOME="$PKG_TEST_HOME" ./aishell pkg list > tests/aishell_test.log 2>&1
+if ! grep -Fq 'cli-tools-0.1.0' tests/aishell_test.log; then
+    cat tests/aishell_test.log >&2
+    echo "[FAIL] pkg list did not show the newly installed package." >&2
+    exit 1
+fi
+echo "[PASS] pkg list shows the installed package."
+
+# pkg info should display metadata for the installed package.
+HOME="$PKG_TEST_HOME" ./aishell pkg info cli-tools > tests/aishell_test.log 2>&1
+if ! grep -Fq 'Name:    cli-tools' tests/aishell_test.log || \
+   ! grep -Fq 'Version: 0.1.0' tests/aishell_test.log || \
+   ! grep -Fq 'Desc:    Core command-line utilities bundle for aishell' tests/aishell_test.log; then
+    cat tests/aishell_test.log >&2
+    echo "[FAIL] pkg info did not display expected metadata." >&2
+    exit 1
+fi
+# Verify info lists all three binary files.
+for f in bin/cat bin/head bin/stat; do
+    if ! grep -Fq "$f" tests/aishell_test.log; then
+        cat tests/aishell_test.log >&2
+        echo "[FAIL] pkg info did not list file: $f" >&2
+        exit 1
+    fi
+done
+echo "[PASS] pkg info shows name, version, description, and all files."
+
+# pkg info on an unknown package should fail cleanly.
+if HOME="$PKG_TEST_HOME" ./aishell pkg info no-such-pkg > tests/aishell_test.log 2>&1; then
+    cat tests/aishell_test.log >&2
+    echo "[FAIL] pkg info succeeded for an unknown package." >&2
+    exit 1
+fi
+if ! grep -Fqx 'pkg: package not installed: no-such-pkg' tests/aishell_test.log; then
+    cat tests/aishell_test.log >&2
+    echo "[FAIL] pkg info did not report the unknown package correctly." >&2
+    exit 1
+fi
+echo "[PASS] pkg info reports unknown package with status 1."
+
+# pkg remove should delete all binaries and the package directory.
+HOME="$PKG_TEST_HOME" ./aishell pkg remove cli-tools > tests/aishell_test.log 2>&1
+for bin in cat head stat; do
+    if [ -e "$PKG_TEST_HOME/.mysh/bin/$bin" ]; then
+        cat tests/aishell_test.log >&2
+        echo "[FAIL] pkg remove left the binary $bin in .mysh/bin." >&2
+        exit 1
+    fi
+done
+if [ -d "$PKG_TEST_HOME/.mysh/pkgs/cli-tools-0.1.0" ]; then
+    cat tests/aishell_test.log >&2
+    echo "[FAIL] pkg remove left the package directory in .mysh/pkgs." >&2
+    exit 1
+fi
+if ! grep -Fq 'pkg: cli-tools-0.1.0 removed' tests/aishell_test.log; then
+    cat tests/aishell_test.log >&2
+    echo "[FAIL] pkg remove did not report success." >&2
+    exit 1
+fi
+echo "[PASS] pkg remove deletes binaries, package dir, and pkgdb record."
+
+# After removal, pkg list should report no packages again.
+HOME="$PKG_TEST_HOME" ./aishell pkg list > tests/aishell_test.log 2>&1
+if ! grep -Fq "No packages installed." tests/aishell_test.log; then
+    cat tests/aishell_test.log >&2
+    echo "[FAIL] pkg list did not report empty after removal." >&2
+    exit 1
+fi
+echo "[PASS] pkg list reports no packages after removal."
+
+rm -rf -- "$PKG_TEST_HOME"
 
 echo "[Stage 7c] REPL interactive loop verification"
 
+# REPL: pipe a registered command (cat) through stdin to confirm the
+# REPL dispatches commands in-process. test.txt was created in Stage 2.
+
 # REPL: pipe commands via stdin
-if printf 'echo REPL_WORKS\npwd\nexit\n' | ./aishell > tests/aishell_test.log 2>&1; then
-    if ! grep -Fqx 'REPL_WORKS' tests/aishell_test.log; then
+if printf 'cat test.txt\nexit\n' | ./aishell > tests/aishell_test.log 2>&1; then
+    if ! grep -Fqx 'AiShell cat test sample.' tests/aishell_test.log; then
         cat tests/aishell_test.log >&2
-        echo "[FAIL] REPL did not echo the expected output." >&2
+        echo "[FAIL] REPL cat did not print the expected file contents." >&2
         exit 1
     fi
     echo "[PASS] REPL dispatches commands in-process."
@@ -618,10 +680,10 @@ else
 fi
 
 # REPL: help inside the loop
-if printf 'help cd\nexit\n' | ./aishell > tests/aishell_test.log 2>&1; then
-    if ! grep -Fqx 'cd - change the current directory' tests/aishell_test.log; then
+if printf 'help cat\nexit\n' | ./aishell > tests/aishell_test.log 2>&1; then
+    if ! grep -Fqx 'cat - print file contents' tests/aishell_test.log; then
         cat tests/aishell_test.log >&2
-        echo "[FAIL] REPL help cd did not show command help." >&2
+        echo "[FAIL] REPL help cat did not show command help." >&2
         exit 1
     fi
     echo "[PASS] REPL help <cmd> displays command documentation."
@@ -638,28 +700,6 @@ echo "[Stage 7d] BusyBox symlink multicall verification"
 # AiShell detects this and dispatches that command directly.
 SYMLINK_DIR="$(mktemp -d tests/symlink-fixture.XXXXXX)"
 
-# pwd symlink
-ln -s "$PWD/aishell" "$SYMLINK_DIR/pwd"
-if "$SYMLINK_DIR/pwd" > tests/aishell_test.log 2>&1 &&
-   grep -Fx "$PWD" tests/aishell_test.log; then
-    echo "[PASS] Symlink multicall (pwd) dispatches correctly."
-else
-    cat tests/aishell_test.log >&2
-    echo "[FAIL] Symlink multicall did not dispatch pwd correctly." >&2
-    exit 1
-fi
-
-# echo symlink
-ln -s "$PWD/aishell" "$SYMLINK_DIR/echo"
-if "$SYMLINK_DIR/echo" hello symlink > tests/aishell_test.log 2>&1 &&
-   grep -Fqx 'hello symlink' tests/aishell_test.log; then
-    echo "[PASS] Symlink multicall (echo) dispatches correctly."
-else
-    cat tests/aishell_test.log >&2
-    echo "[FAIL] Symlink multicall did not dispatch echo correctly." >&2
-    exit 1
-fi
-
 # ls symlink
 ln -s "$PWD/aishell" "$SYMLINK_DIR/ls"
 if "$SYMLINK_DIR/ls" > tests/aishell_test.log 2>&1 &&
@@ -668,16 +708,6 @@ if "$SYMLINK_DIR/ls" > tests/aishell_test.log 2>&1 &&
 else
     cat tests/aishell_test.log >&2
     echo "[FAIL] Symlink multicall did not dispatch ls correctly." >&2
-    exit 1
-fi
-
-# cd symlink
-ln -s "$PWD/aishell" "$SYMLINK_DIR/cd"
-if "$SYMLINK_DIR/cd" "$COMMAND_TEST_DIR" > tests/aishell_test.log 2>&1; then
-    echo "[PASS] Symlink multicall (cd) dispatches correctly."
-else
-    cat tests/aishell_test.log >&2
-    echo "[FAIL] Symlink multicall did not dispatch cd correctly." >&2
     exit 1
 fi
 

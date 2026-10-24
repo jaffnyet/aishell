@@ -14,15 +14,13 @@ COMMAND_SOURCES = \
 	src/commands/cmd_mkdir.c \
 	src/commands/cmd_rmdir.c \
 	src/commands/cmd_touch.c \
-	src/commands/cmd_cd.c \
-	src/commands/cmd_pwd.c \
-	src/commands/cmd_echo.c
+	src/commands/cmd_pkg.c
 
 SOURCES = src/shell_main.c $(COMMAND_SOURCES) src/argtable3.c src/registry.c
 OBJECTS = $(SOURCES:.c=.o)
 
 # Standalone command binaries (compiled with -DSTANDALONE)
-STANDALONE_BINS = $(addprefix cmd_,cat ls cp mv rm mkdir rmdir head tail stat touch cd pwd echo)
+STANDALONE_BINS = $(addprefix cmd_,cat ls cp mv rm mkdir rmdir head tail stat touch pkg)
 
 .PHONY: all standalone clean
 

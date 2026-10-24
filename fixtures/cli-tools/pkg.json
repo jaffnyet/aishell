@@ -1,0 +1,9 @@
+{
+    "name": "cli-tools",
+    "version": "0.1.0",
+    "description": "Core command-line utilities bundle for aishell",
+    "commands": ["cat", "head", "stat"],
+    "files": ["bin/cat", "bin/head", "bin/stat"],
+    "docs": ["docs/cat.md", "docs/head.md", "docs/stat.md"],
+    "dependencies": []
+}

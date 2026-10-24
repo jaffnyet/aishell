@@ -1,5 +1,104 @@
 # AI Work Log
 
+## 2026-10-23 - Expand cli-tools package to multi-binary (cat, head, stat)
+
+### User prompt / intent
+Expand cli-tools package to bundle multiple filesystem commands (cat, head, stat), fully demonstrating multi-binary package management and clean lifecycle handling.
+
+### Changes made and rationale
+- `setup_test_pkg.sh`: pkg.json updated to commands ["cat", "head", "stat"], files ["bin/cat", "bin/head", "bin/stat"], docs ["docs/cat.md", "docs/head.md", "docs/stat.md"]. Added bin/cat (reads/displays file contents), bin/head (first 5 lines), bin/stat (simulated file metadata). All three binaries chmod +x. Documentation stubs for each command.
+- `verify_pkg.sh`: full lifecycle now installs cli-tools, verifies all three binaries are present in ~/.mysh/bin, executes each against the Makefile, checks pkg info lists all three files, then removes the package and verifies all three binaries are deleted.
+- `tests/verify_1.sh`: Stage 7b updated to check all three binaries during install, execution, info, and removal (for-loops instead of single-binary checks).
+- `README.md`: already references cli-tools.
+
+### How to verify
+```sh
+./verify_pkg.sh          # 30+ checks
+./tests/verify_1.sh      # all checks including multi-binary pkg tests
+```
+
+## 2026-10-23 - Add verify_pkg.sh comprehensive lifecycle demo script
+
+### User prompt / intent
+create a verification script named verify_pkg.sh that demonstrates the complete package lifecycle (install, list, info, run, remove, cleanup)
+
+### Changes made and rationale
+- Created `verify_pkg.sh` in the project root (chmod +x) that runs the full pkg lifecycle as a Step 1-9 demo with green/red status checks.
+- Uses an isolated `$HOME` (`tests/pkg-demo-home.XXXXXX`) so the real `~/.mysh` is never touched.
+- `set -euo pipefail` for robustness; `trap cleanup EXIT` removes the temp home.
+- Helper functions: `pass`/`fail` (colored output), `step` (yellow headers), `assert_ok`/`assert_fail`/`assert_contains`/`assert_contains_anyexit` (the last handles commands expected to fail but still emit diagnostics).
+- Steps: clean rebuild (make clean && make) → help discovery → generate mock tarball (setup_test_pkg.sh) → install → list → info → execute installed binary → remove → verify cleanup (bin gone, pkgdir gone, list empty, info reports not-installed).
+- Fixed an assertion bug: `pkg info <name>` returns exit 1 for uninstalled packages, so Step 9 uses `assert_contains_anyexit` (which ignores exit status and only checks output) instead of `assert_contains`.
+
+### How to verify
+```sh
+./verify_pkg.sh
+```
+
+## 2026-10-23 - Implement pkg package manager command
+
+### User prompt / intent
+implement our package manager command module in src/commands/cmd_pkg.c following the established cmd_spec_t architecture, with install/list/info/remove subcommands using argtable3 CLI parsing.
+
+### Changes made and rationale
+- Created `src/commands/cmd_pkg.c` implementing the `pkg` command with four subcommands:
+  - `pkg install <tarball>`: extracts a .tar.gz into ~/.mysh/pkgs/<name>-<version>/ via fork/execvp of `tar`, parses pkg.json for name/version/description/files, copies listed executables into ~/.mysh/bin/ (chmod 0755), and records the entry in ~/.mysh/pkgdb.txt.
+  - `pkg list`: reads pkgdb.txt and prints installed packages.
+  - `pkg info <name>`: displays name, version, description, owned files, and install location from pkgdb + pkg.json.
+  - `pkg remove <name>`: deletes owned bin files, removes the package directory, and rewrites pkgdb.txt without the entry.
+- argtable3 table uses arg_lit0 for -h/--help, two arg_filen entries (subcommand + operands) with a NULL sentinel, following the cmd_cat.c pattern.
+- pkgdb.txt format: tab-separated `<name>\t<version>\t<files>\t<pkgdir>` with comment support.
+- Added `register_pkg_command()` and wired it into `src/shell_main.c` (forward declaration + registration call).
+- Added `cmd_pkg` to the Makefile COMMAND_SOURCES and STANDALONE_BINS.
+- Added pkg to the README commands table and project layout.
+- Created `setup_test_pkg.sh` in the project root to generate a mock `wc-tools-0.1.0.tar.gz` package (with pkg.json, bin/wc executable, docs/wc.md) for package-management testing.
+
+### Debugging and verification
+- Initial build caught: `sizeof(args.table)` should be `sizeof(args->table)` in build_pkg_argtable (where args is a pointer); fixed.
+- Brace imbalance in pkg_install after refactoring Stage 2 block — added missing closing brace for the Stage 1 extraction block.
+- Subcommand dispatch passed argv with subcmd_name at index 0, but handlers expected operands at index 0 — fixed dispatch to pass operands only (sub_argv[0] = first operand).
+- Unused `dbpath`/`bindir` declarations removed after inlining bindir computation; `(void)dbpath` removed.
+- Removed unused `i` variable from pkg_run scope (kept the one inside the dispatch block).
+- Fixed -Wformat-truncation warnings by checking snprintf return values in the tar-scan loop.
+- Fixed pre-existing latent `set -u` bug in tests/verify_1.sh: initialized SYMLINK_DIR and PKG_TEST_HOME to empty strings in cleanup scope.
+
+### Debugging and verification (final)
+- `gcc -Wall -Wextra -Iinclude -std=c99` compiles cmd_pkg.c with zero warnings (both as object and standalone).
+- `make` and `make standalone` both build cleanly with 12 commands (including pkg).
+- `./tests/verify_1.sh` passes all stages (1-7, 7b pkg tests, 7c, 7d):
+  - 9 new pkg tests all PASS (list-empty, setup, install, binary-runnable, list-shows, info-metadata, info-unknown-fails, remove-cleans, list-empty-after).
+  - Standalone `cmd_pkg install/list/info/remove` verified end-to-end with an isolated HOME.
+
+### How to verify
+```sh
+make clean && make && make standalone && ./tests/verify_1.sh
+```
+
+## 2026-10-23 - Remove cd, pwd, and echo commands
+
+### User prompt / intent
+remove the commands cd, pwd, and echo
+
+### Changes made and rationale
+- Deleted the command modules `src/commands/cmd_cd.c`, `src/commands/cmd_pwd.c`, and `src/commands/cmd_echo.c`.
+- Removed the corresponding forward declarations (`register_cd_command`, `register_pwd_command`, `register_echo_command`) and registration calls in `src/shell_main.c`.
+- Updated `Makefile` to remove the three source files from `COMMAND_SOURCES` and the `cd pwd echo` entries from `STANDALONE_BINS`.
+- Updated `README.md` to drop the cd/pwd/echo rows from the commands table.
+- Updated `tests/verify_1.sh`: removed cd/pwd/echo entries from the help-check and `--help`-check command loops, removed the "Stage 7b Built-in command verification" block, rewrote the REPL test to dispatch `cat test.txt` and `help cat` instead of `echo`/`pwd`/`help cd`, and removed the pwd/echo/cd symlink-multicall test blocks (keeping only the `ls` symlink test). Also removed the stale `cmd_symlink_pwd`/`cmd_symlink_echo` cleanup entries.
+
+### Debugging and verification
+- `make clean && make` rebuilt `aishell` from the 11 remaining command modules with no warnings.
+- `make standalone` built the 11 remaining `cmd_<name>` binaries with no warnings.
+- `./tests/verify_1.sh` passed all stages (1–7, 7c, 7d) — 7 PASS lines in Stage 7 alone.
+- `./aishell help` lists exactly 11 commands (cat, ls, stat, head, tail, cp, mv, rm, mkdir, rmdir, touch); cd/pwd/echo are reported as "command not found".
+- Removed stale leftover object files `cmd_cd.o`, `cmd_pwd.o`, `cmd_echo.o` from a prior build.
+
+### How to verify
+```sh
+make clean && make && make standalone && ./tests/verify_1.sh
+```
+
+
 ## 2026-10-16 - Add README.md, set up SSH authentication, and push to GitHub
 
 ### User prompt / intent

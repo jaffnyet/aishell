@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# cat - concatenate and display file contents (core CLI utility for aishell)
+# Reads and displays the contents of a target file passed as an argument.
+
+if [[ $# -eq 0 ]]; then
+    echo "cat: missing file operand" >&2
+    exit 1
+fi
+
+for f in "$@"; do
+    if [[ -e "$f" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            printf '%s\n' "$line"
+        done < "$f"
+    else
+        echo "cat: cannot read '$f': No such file or directory" >&2
+        exit 1
+    fi
+done

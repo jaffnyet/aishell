@@ -34,9 +34,7 @@ extern void register_rm_command(void);
 extern void register_mkdir_command(void);
 extern void register_rmdir_command(void);
 extern void register_touch_command(void);
-extern void register_cd_command(void);
-extern void register_pwd_command(void);
-extern void register_echo_command(void);
+extern void register_pkg_command(void);
 
 /** Helper callback to list registered commands in the format
  *  "  <name> - <summary>". */
@@ -76,9 +74,7 @@ static void register_all_commands(void)
     register_mkdir_command();
     register_rmdir_command();
     register_touch_command();
-    register_cd_command();
-    register_pwd_command();
-    register_echo_command();
+    register_pkg_command();
 }
 
 /** Extract the basename from a path argument.

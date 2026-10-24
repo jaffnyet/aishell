@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# head - output the first lines of a file (core CLI utility for aishell)
+# Outputs the first 5 lines of a target file.
+
+if [[ $# -eq 0 ]]; then
+    echo "head: missing file operand" >&2
+    exit 1
+fi
+
+target="$1"
+if [[ -e "$target" ]]; then
+    n=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        printf '%s\n' "$line"
+        n=$((n + 1))
+        if [[ $n -ge 5 ]]; then
+            break
+        fi
+    done < "$target"
+else
+    echo "head: cannot read '$target': No such file or directory" >&2
+    exit 1
+fi

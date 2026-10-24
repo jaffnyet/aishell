@@ -1,0 +1,18 @@
+# Exclude the docs directory (course materials, not source code)
+docs/
+
+# Build artifacts
+*.o
+aishell
+cmd_cat cmd_ls cmd_stat cmd_head cmd_tail cmd_cp cmd_mv cmd_rm cmd_mkdir cmd_rmdir cmd_touch cmd_pkg
+
+# Package tarballs
+cli-tools-0.1.0.tar.gz
+stat-tools-0.1.0.tar.gz
+
+# Test artifacts
+test.txt
+tests/test_cat_error
+tests/test_cat_error.log
+tests/test_cat_error.c
+tests/aishell_test.log

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# stat - file status inspector (core CLI utility for aishell)
+# Outputs simulated file metadata: size, file type, permissions.
+
+if [[ $# -eq 0 ]]; then
+    echo "  File: ."
+    echo "  Size: 4096       File Type: directory"
+    echo "  Permissions: drwxr-xr-x"
+    echo "  Owner: $(id -un)    Group: $(id -gn)"
+    echo "  Accessed: 2026-01-01 00:00:00.000000000 -0700"
+    echo "  Modified: 2026-01-01 00:00:00.000000000 -0700"
+elif [[ $# -gt 0 ]]; then
+    target="$1"
+    if [[ -e "$target" ]]; then
+        size=$(stat -c '%s' "$target" 2>/dev/null || echo 0)
+        if [[ -d "$target" ]]; then
+            ftype="directory"
+            perms="drwxr-xr-x"
+        elif [[ -f "$target" ]]; then
+            ftype="regular file"
+            perms="-rw-r--r--"
+        else
+            ftype="other"
+            perms="??????????"
+        fi
+        echo "  File: $target"
+        echo "  Size: $size       File Type: $ftype"
+        echo "  Permissions: $perms"
+        echo "  Owner: $(id -un)    Group: $(id -gn)"
+        echo "  Accessed: 2026-01-01 00:00:00.000000000 -0700"
+        echo "  Modified: $(stat -c '%y' "$target" 2>/dev/null || echo "2026-01-01 00:00:00.000000000 -0700")"
+    else
+        echo "stat: cannot stat '$target': No such file or directory" >&2
+        exit 1
+    fi
+fi
